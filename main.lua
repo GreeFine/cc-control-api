@@ -1,39 +1,35 @@
 _G.RefuelCheck = function()
-    fuelLevel = turtle.getFuelLevel()
+    local fuelLevel = turtle.getFuelLevel()
     if fuelLevel < 500 then
-        turtle.select(15)
-        local amount = math.ceil(turtle.getItemCount(15) - 1)
+        turtle.select(16)
+        local amount = math.ceil(turtle.getItemCount(16) - 1)
         if amount > 0 then
             turtle.refuel(amount)
         end
     end
     print("Fuel level = ", fuelLevel)
-    info("fuelLevel", fuelLevel)
-    if fuelLevel < 200 then
-        print("Low fuel level !")
-        return 1
-    end
-    return 0
+    return fuelLevel
 end
 
-_G.depositItem = function()
-    print("Start item deposit")
-    while turtle.detectUp() do
-        if not turtle.digUp() then
-            forwardforceDig()
-        end
-    end
-    turtle.select(16)
-    if not turtle.detectUp() then
-        if turtle.placeUp() then
-            for i = 1, 14 do
-                turtle.select(i)
-                turtle.dropUp()
-            end
-            turtle.select(16)
+_G.inspect = function()
+  
+end
+
+chestName = "minecraft:chest"
+_G.depositItem = function(filter)
+    local has_block, inspect = turtle.inspect()
+    if has_block and inspect.name == chestName then
+      print("Start item deposit")
+      turtle.inspect()
+      for i = 1, 15 do
+          turtle.select(i)
+          while turtle.getItemCount() > 0 do
             turtle.drop()
-            turtle.digUp()
-        end
+          end
+      end
+    else
+      info("issue", "missing chest")
+      print("Missing chest")
     end
 end
 
@@ -106,28 +102,54 @@ _G.Reboot = function()
     shell.execute("reboot")
 end
 
-_G.goTop = function()
-    while turtle.detect() do
-        turtle.up()
-    end
-    turtle.forward()
-end
 
-api_url = "http://13cc-90-16-73-173.ngrok.io"
+
+api_url = "http://33a0-90-16-73-173.ngrok.io"
 _G.info = function(topic, info)
     local request = http.post(api_url .. "/info/" .. turtlename .. '/' .. topic, "info=" .. tostring(info))
+    return request
 end
+
 
 turtlename = os.getComputerLabel()
 while 1 do
-    _G.RefuelCheck()
+    info("fuellevel", _G.RefuelCheck())
     local request = http.get(api_url .. "/request/" .. turtlename)
     for line in request.readLine do
-        print("received command from server:" .. line)
+        print("Command from server:" .. line)
         if not pcall(loadstring(line)) then
             print("Coulnd't do: " .. line)
             break
         end
     end
-    sleep(1)
+    sleep(2)
 end
+
+
+-- _G.goTop = function()
+--   while turtle.detect() do
+--       turtle.up()
+--   end
+--   turtle.forward()
+-- end
+
+-- _G.enderChestDeposeItems = function()
+--     print("Start item deposit")
+--     while turtle.detectUp() do
+--         if not turtle.digUp() then
+--             forwardforceDig()
+--         end
+--     end
+--     turtle.select(16)
+--     if not turtle.detectUp() then
+--         if turtle.placeUp() then
+--             for i = 1, 14 do
+--                 turtle.select(i)
+--                 turtle.dropUp()
+--             end
+--             turtle.select(16)
+--             turtle.drop()
+--             turtle.digUp()
+--         end
+--     end
+-- end
