@@ -38,7 +38,7 @@ _G.Up = function(height)
         while turtle.detectUp() do
           if not turtle.digUp() then
             info("stuck", "up")
-            sleep(60)
+            break
           end
         end
         turtle.up()
@@ -50,7 +50,7 @@ _G.Down = function(height)
         while turtle.detectDown() do
             if not turtle.digDown() then
               info("stuck", "down")
-              sleep(60)
+              break
             end
         end
         turtle.down()
@@ -69,23 +69,23 @@ _G.Right = function(n)
   end
 end
 
-_G.UpDig = function(height)
-    for i = 1, height do
-      if turtle.detect() then
-        turtle.dig()
-      end
-      _G.Up(1)
-    end
-end
+-- _G.UpDig = function(height)
+--     for i = 1, height do
+--       if turtle.detect() then
+--         turtle.dig()
+--       end
+--       _G.Up(1)
+--     end
+-- end
 
-_G.DownDig = function(height)
-    for i = 1, height do
-        while turtle.detect() do
-            turtle.dig()
-        end
-        _G.Down(1)
-    end
-end
+-- _G.DownDig = function(height)
+--     for i = 1, height do
+--         while turtle.detect() do
+--             turtle.dig()
+--         end
+--         _G.Down(1)
+--     end
+-- end
 
 _G.Forward = function(x)
     for i = 1, x do
@@ -96,6 +96,19 @@ _G.Forward = function(x)
     end
 end
 
+_G.ForwardDig = function(height)
+  for i = 1, height do
+      while turtle.detectUp() do
+          turtle.digUp()
+      end
+      while turtle.detectDown() do
+        turtle.digDown()
+      end
+      _G.Forward(1)
+  end
+end
+
+
 _G.Sleep = sleep
 
 _G.Reboot = function()
@@ -104,7 +117,7 @@ end
 
 
 
-api_url = "http://33a0-90-16-73-173.ngrok.io"
+api_url = "http://7c65-90-16-73-173.ngrok.io"
 _G.info = function(topic, info)
     local request = http.post(api_url .. "/info/" .. turtlename .. '/' .. topic, "info=" .. tostring(info))
     return request

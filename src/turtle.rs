@@ -1,13 +1,10 @@
 use crate::{
-    mining_plots::{
-        mining_orders, new_mining_position, MiningPlot, PLOT_FACING, PLOT_MAX_DEPTH_SEGMENT,
-        PLOT_SIZE,
-    },
-    utils::{Facing, Position},
+    functions::{go_to_position_orders, resume_or_create_plot_oders},
+    utils::{Direction, Position},
     MiningPlots,
 };
 
-use mongodb::bson::{self, doc};
+use mongodb::bson::doc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
@@ -19,6 +16,9 @@ pub enum CommandName {
     Left,
     Right,
     Forward,
+    // UpDig,
+    // DownDig,
+    ForwardDig,
     Sleep,
     Reboot,
     RefuelCheck,
@@ -30,11 +30,11 @@ pub enum CommandName {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Command {
     name: CommandName,
-    argument: u32,
+    argument: i32,
 }
 
 impl Command {
-    pub fn new(name: CommandName, argument: u32) -> Self {
+    pub fn new(name: CommandName, argument: i32) -> Self {
         Command { name, argument }
     }
 }
@@ -46,7 +46,7 @@ pub struct Turtle {
     pub orders: Vec<Command>,
     pub infos: HashMap<String, String>,
     pos: Position,
-    facing: Facing,
+    direction: Direction,
 }
 
 #[allow(dead_code)]
@@ -55,12 +55,52 @@ const IN_WORLD_DEFAULT_POSITION: Position = Position {
     y: 63,
     z: -2615,
 };
-const IN_WORLD_CHEST_POSITION: Position = Position {
+pub const IN_WORLD_CHEST_POSITION: Position = Position {
     x: -559,
     y: 63,
     z: -2767,
 };
+#[allow(dead_code)]
 const IN_WORLD_SKY_POSITON: i32 = 73;
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        functions::go_to_position_orders,
+        persistance,
+        utils::{Direction, Position},
+    };
+    use std::collections::HashMap;
+
+    use super::Turtle;
+    #[actix_web::test]
+    async fn test_go_to_order() {
+        let (_, db_mining_plots) = persistance::connect().await;
+        let pos = Position { x: 0, y: 0, z: 0 };
+
+        let mut turtle = Turtle {
+            pos,
+            direction: Direction::North,
+            name: "test".to_string(),
+            orders: Vec::new(),
+            infos: HashMap::new(),
+        };
+        let gotopos = Position { x: 4, y: 0, z: 0 };
+        let gotoorders = go_to_position_orders(
+            &mut turtle.pos.clone(),
+            &mut Direction::North,
+            &gotopos,
+            &Direction::North,
+        )
+        .unwrap();
+        println!("debug: orders= {:#?}", gotoorders);
+        turtle.orders = gotoorders;
+
+        turtle.orders(&db_mining_plots).await;
+        assert_eq!(turtle.pos, gotopos);
+        assert_eq!(turtle.direction, Direction::North);
+    }
+}
 
 impl Turtle {
     pub fn default(name: String) -> Self {
@@ -68,153 +108,90 @@ impl Turtle {
             orders: vec![Command::new(CommandName::Sleep, 2)],
             infos: HashMap::new(),
             pos: IN_WORLD_CHEST_POSITION,
-            facing: Facing::North,
+            direction: Direction::North,
             name,
         }
     }
 
     #[allow(dead_code)]
     pub fn get_position(&self) -> String {
-        format!("Position: {:#?}, Facing: {}", &self.pos, &self.facing)
+        format!("Position: {:#?}, Direction: {}", &self.pos, &self.direction)
     }
 
-    fn go_in_the_sky_orders(&mut self) -> Option<String> {
+    #[allow(dead_code)]
+    fn go_in_the_sky_orders(&mut self) -> Option<Command> {
         if self.pos.y < IN_WORLD_SKY_POSITON {
-            let result = Some(format!("Up({})\n", IN_WORLD_SKY_POSITON - self.pos.y));
-            self.pos.y = IN_WORLD_SKY_POSITON;
-            result
+            Some(Command::new(
+                CommandName::Up,
+                IN_WORLD_SKY_POSITON - self.pos.y,
+            ))
         } else {
             None
         }
     }
 
-    fn rotate_to(&mut self, facing: Facing) -> Option<String> {
-        if facing == self.facing {
-            return None;
-        }
-        let mut result = String::new();
-        let diff_facing = facing.clone() as i32 - self.facing.clone() as i32;
-        if diff_facing > 0 {
-            result.push_str(&*format!("Right({})\n", diff_facing))
-        } else {
-            result.push_str(&*format!("Left({})\n", diff_facing.abs()))
-        }
-        self.facing = facing;
-        Some(result)
-    }
-
-    pub fn go_to_position_orders(&mut self, position: Position, facing: Facing) -> String {
-        if self.pos == position && self.facing == facing {
-            return String::new();
-        }
-        let mut orders_to_pos = String::new();
-        // Don't go flying with you are near
-        if (self.pos.x - position.y).abs() + (self.pos.x - position.y).abs() > (PLOT_SIZE * 2) {
-            if let Some(orders) = self.go_in_the_sky_orders() {
-                orders_to_pos.push_str(&*orders);
-            }
-        }
-        let pos_diff = self.pos - position;
-        if pos_diff.x > 0 {
-            if let Some(orders) = self.rotate_to(Facing::West) {
-                orders_to_pos.push_str(&*orders);
-            }
-        } else if let Some(orders) = self.rotate_to(Facing::East) {
-            orders_to_pos.push_str(&*orders);
-        }
-        orders_to_pos.push_str(&*format!("Forward({})\n", pos_diff.x.abs()));
-        if pos_diff.z > 0 {
-            if let Some(orders) = self.rotate_to(Facing::North) {
-                orders_to_pos.push_str(&*orders);
-            }
-        } else if let Some(orders) = self.rotate_to(Facing::South) {
-            orders_to_pos.push_str(&*orders);
-        }
-        orders_to_pos.push_str(&*format!("Forward({})\n", pos_diff.z.abs()));
-        let verticality = if pos_diff.y > 0 { "Down" } else { "Up " };
-        orders_to_pos.push_str(&*format!("{}({})\n", verticality, pos_diff.y));
-        if let Some(orders) = self.rotate_to(facing) {
-            orders_to_pos.push_str(&*orders);
-        }
-        self.pos = position;
-        orders_to_pos.trim_end_matches('\n').to_string()
-    }
-
-    fn mine_plot_orders(&mut self, mining_plot: MiningPlot) -> String {
-        let mut current_plot_position_w_depth = mining_plot.position;
-        current_plot_position_w_depth.y -= (mining_plot.mined_depth_segment * 2) as i32;
-        let mut result = self.go_to_position_orders(current_plot_position_w_depth, PLOT_FACING);
-        result.push('\n');
-        result.push_str(&*mining_orders());
-        result
-    }
-
-    async fn resume_or_create_plot_oders(&mut self, mining_plots: &MiningPlots) -> String {
-        let current_plot = mining_plots
-            .find_one(doc! {"current_turtle": &self.name}, None)
-            .await
-            .expect("Unable to find_one from mining plots");
-        if let Some(mut current_plot) = current_plot {
-            if current_plot.mined_depth_segment < PLOT_MAX_DEPTH_SEGMENT {
-                current_plot.mined_depth_segment += 1;
-                mining_plots
-                    .update_one(
-                        doc! {"current_turtle": &self.name},
-                        doc! { "$set": { "mined_depth_segment": current_plot.mined_depth_segment } },
-                        None,
-                    )
-                    .await
-                    .expect("Unable to update mined_depth_segment in plot");
-                return self.mine_plot_orders(current_plot);
-            } else {
-                mining_plots
-                    .update_one(
-                        doc! {"current_turtle": &self.name},
-                        doc! { "$set": { "current_turtle": bson::to_bson(&None::<String>).unwrap() } },
-                        None,
-                    )
-                    .await
-                    .expect("Unable to remove clear name in plot");
-            }
-        };
-        let document_count = mining_plots
-            .count_documents(None, None)
-            .await
-            .expect("Unable to get document count for mining_plots");
-        let new_plot_position = new_mining_position(document_count as i32);
-        let new_plot = MiningPlot::new(new_plot_position, &self.name);
-        mining_plots
-            .insert_one(&new_plot, None)
-            .await
-            .expect("Unable to add new mining plot");
-        self.mine_plot_orders(new_plot)
-    }
-
     pub async fn orders(&mut self, mining_plots: &MiningPlots) -> String {
         let mut result: Vec<String> = Vec::new();
-        if let Some(fuellevel) = self.infos.get("fuellevel") {
+
+        // We use temporary position for functions, but we are re-calculating position and stuff later
+        let mut temporary_position = self.pos;
+        let mut temporary_direction = self.direction.clone();
+        let mut orders = if let Some(fuellevel) = self.infos.get("fuellevel") {
             let fuelvalue: i32 = fuellevel.parse().unwrap();
             if fuelvalue < 500 {
                 println!("Turtle {} as low fuel !", self.name);
-                return self.go_to_position_orders(IN_WORLD_CHEST_POSITION, Facing::North);
+                go_to_position_orders(
+                    &mut temporary_position,
+                    &mut temporary_direction,
+                    &IN_WORLD_CHEST_POSITION,
+                    &Direction::North,
+                )
+                .unwrap_or_default()
+            } else {
+                self.orders.clone()
             }
-        }
-        let orders = self.orders.clone();
+        } else {
+            self.orders.clone()
+        };
+
         let mut indexs_to_replace = Vec::new();
         for (index, Command { name, argument: _ }) in orders.iter().enumerate() {
             match name {
                 CommandName::Home => {
-                    let orders = self.go_to_position_orders(IN_WORLD_CHEST_POSITION, Facing::North);
+                    let orders = go_to_position_orders(
+                        &mut temporary_position,
+                        &mut temporary_direction,
+                        &IN_WORLD_CHEST_POSITION,
+                        &Direction::North,
+                    );
                     indexs_to_replace.push((index, orders));
                 }
                 CommandName::MinePlot => {
-                    let oders = self.resume_or_create_plot_oders(mining_plots).await;
-                    indexs_to_replace.push((index, oders));
+                    let oders = resume_or_create_plot_oders(
+                        &mut temporary_position,
+                        &mut temporary_direction,
+                        &self.name,
+                        mining_plots,
+                    )
+                    .await;
+                    indexs_to_replace.push((index, Some(oders)));
                 }
                 _ => {}
             }
         }
 
+        let mut added_indexs = 0;
+        for (index, commands) in indexs_to_replace {
+            orders.remove(index + added_indexs);
+            if let Some(mut commands) = commands {
+                commands.reverse();
+                let commands_size = commands.len();
+                for command in commands {
+                    orders.insert(index + added_indexs, command);
+                }
+                added_indexs += commands_size - 1;
+            }
+        }
         for Command { name, argument } in orders {
             let argument = argument as i32;
             let order_str = match name {
@@ -226,31 +203,36 @@ impl Turtle {
                     self.pos.y -= argument;
                     format!("{}({})", name, argument)
                 }
+                CommandName::Forward | CommandName::ForwardDig => {
+                    match self.direction {
+                        Direction::North => self.pos.z -= argument,
+                        Direction::East => self.pos.x += argument,
+                        Direction::South => self.pos.z += argument,
+                        Direction::West => self.pos.x -= argument,
+                    };
+                    format!("{}({})", name, argument)
+                }
                 CommandName::Right => {
-                    let u8facing: usize = self.facing.clone() as usize;
-                    self.facing = Facing::from_repr((u8facing + 1) % 4).unwrap();
+                    let u8facing: usize = self.direction.clone() as usize;
+                    self.direction =
+                        Direction::from_repr((u8facing + argument as usize) % 4).unwrap();
                     format!("{}({})", name, argument)
                 }
                 CommandName::Left => {
-                    let u8facing: usize = self.facing.clone() as usize;
-                    let newfacing = if u8facing == 0 { 3 } else { (u8facing - 1) % 4 };
-                    self.facing = Facing::from_repr(newfacing).unwrap();
-                    format!("{}({})", name, argument)
-                }
-                CommandName::Forward => {
-                    match self.facing {
-                        Facing::North => self.pos.z -= argument,
-                        Facing::East => self.pos.x += argument,
-                        Facing::South => self.pos.z += argument,
-                        Facing::West => self.pos.x -= argument,
+                    let u8facing: usize = self.direction.clone() as usize;
+                    let newfacing = if u8facing == 0 {
+                        3
+                    } else {
+                        (u8facing - argument as usize) % 4
                     };
+                    self.direction = Direction::from_repr(newfacing).unwrap();
                     format!("{}({})", name, argument)
                 }
                 CommandName::Reboot | CommandName::Sleep | CommandName::RefuelCheck => {
                     format!("{}({})", name, argument)
                 }
                 _ => {
-                    panic!("Order process missing")
+                    panic!("Order process missing: {}", name)
                 }
             };
             result.push(order_str);

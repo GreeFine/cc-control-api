@@ -4,9 +4,10 @@ use mongodb::{
     bson::{self, doc},
     Collection,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{str::FromStr, sync::Mutex};
 
+mod functions;
 mod mining_plots;
 mod persistance;
 mod turtle;
@@ -130,6 +131,7 @@ async fn add_orders(
     log::info!("Adding orders for {}", name);
     let orders: Vec<Command> = form
         .orders
+        .trim_end_matches('\n')
         .split('\n')
         .map(|order| {
             let order_split: Vec<_> = order.split(',').collect();
@@ -137,7 +139,7 @@ async fn add_orders(
                 CommandName::from_str(order_split[0])
                     .unwrap_or_else(|_| panic!("Unable to parse order {}", order)),
                 order_split[1]
-                    .parse::<u32>()
+                    .parse::<i32>()
                     .unwrap_or_else(|_| panic!("Unable to parse order: {}", order)),
             )
         })

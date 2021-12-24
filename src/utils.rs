@@ -34,7 +34,7 @@ impl Add for Position {
 }
 
 #[derive(Debug, Display, FromRepr, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Facing {
+pub enum Direction {
     North = 0,
     East = 1,
     South = 2,
