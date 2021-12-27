@@ -70,7 +70,7 @@ async fn add_information(
     let result = turtles
         .update_one(
             doc! { "name": &name},
-            doc! { "$set": { "infos": { topic: &form.info } } },
+            doc! { "$set": { &*format!("infos.{}", topic): &form.info } },
             None,
         )
         .await

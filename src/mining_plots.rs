@@ -36,24 +36,21 @@ const IN_WORLD_MINING_POSITION: Position = Position {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::Position;
+    // use crate::utils::Position;
 
-    use super::mining_orders;
+    // use super::mining_orders;
 
     #[test]
     fn test_mining_orders() {
-        let result = mining_orders(
-            &mut Position { x: 0, y: 0, z: 0 },
-            &mut crate::utils::Direction::East,
-        );
-        println!("{:#?}", result);
+        // let result = mining_orders(
+        //     &mut Position { x: 0, y: 0, z: 0 },
+        //     &mut crate::utils::Direction::East,
+        // );
+        // println!("{:#?}", result);
     }
 }
 
-pub fn mining_orders(
-    departure: &mut Position,
-    departure_direction: &mut Direction,
-) -> Vec<Command> {
+pub fn mining_orders() -> Vec<Command> {
     let mut result = Vec::new();
     for turn in 1..PLOT_SIZE {
         let side = if turn % 2 == 0 {
@@ -69,9 +66,6 @@ pub fn mining_orders(
         ]);
     }
     result.push(Command::new(CommandName::ForwardDig, PLOT_SIZE - 1));
-    departure.x += PLOT_SIZE - 1;
-    *departure_direction =
-        Direction::from_repr((departure_direction.clone() as usize + 2) % 4).unwrap();
     result
 }
 

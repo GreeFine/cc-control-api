@@ -11,12 +11,20 @@ _G.RefuelCheck = function()
     return fuelLevel
 end
 
-_G.inspect = function()
-  
+_G.isFull = function ()
+  local isFull = true
+  for i = 1, 15 do
+    turtle.select(i)
+    if turtle.getItemCount() == 0 then
+      isFull = false
+      break
+    end
+  end
+  return isFull
 end
 
 chestName = "minecraft:chest"
-_G.depositItem = function(filter)
+_G.DepositItem = function(filter)
     local has_block, inspect = turtle.inspect()
     if has_block and inspect.name == chestName then
       print("Start item deposit")
@@ -90,7 +98,10 @@ end
 _G.Forward = function(x)
     for i = 1, x do
         while turtle.detect() do
-            turtle.dig()
+            if not turtle.dig() then
+              info("stuck", "forward")
+              break
+            end
         end
         turtle.forward()
     end
@@ -99,10 +110,14 @@ end
 _G.ForwardDig = function(height)
   for i = 1, height do
       while turtle.detectUp() do
-          turtle.digUp()
+          if not turtle.digUp() then
+            break
+          end
       end
       while turtle.detectDown() do
-        turtle.digDown()
+        if not turtle.digDown() then
+          break
+        end
       end
       _G.Forward(1)
   end
@@ -117,7 +132,7 @@ end
 
 
 
-api_url = "http://7c65-90-16-73-173.ngrok.io"
+api_url = "http://e61e-2001-861-3f0a-ec00-6870-79a6-b4e0-d8cd.ngrok.io"
 _G.info = function(topic, info)
     local request = http.post(api_url .. "/info/" .. turtlename .. '/' .. topic, "info=" .. tostring(info))
     return request
@@ -127,6 +142,7 @@ end
 turtlename = os.getComputerLabel()
 while 1 do
     info("fuellevel", _G.RefuelCheck())
+    info("isFull", _G.isFull())
     local request = http.get(api_url .. "/request/" .. turtlename)
     for line in request.readLine do
         print("Command from server:" .. line)
